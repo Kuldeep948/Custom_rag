@@ -1,0 +1,63 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RAG Knowledge Base — Docker Compose
+#
+# Services:  postgres  +  api
+# Vector DB: Qdrant Cloud (external) — credentials loaded from .env
+# No Redis, no Celery — file processing runs as FastAPI BackgroundTasks
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+      POSTGRES_DB: ragdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d ragdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI Application ──────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: rag_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://raguser:ragpassword@postgres:5432/ragdb
+      DATABASE_URL_SYNC: postgresql://raguser:ragpassword@postgres:5432/ragdb
+      # QDRANT_URL and QDRANT_API_KEY are loaded from .env
+    volumes:
+      - ./uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: rag_network
