@@ -1,0 +1,161 @@
+# =============================================================================
+# RAG Knowledge Base — Central Configuration File
+#
+# Structured defaults for every major subsystem.
+# Environment variables (.env) always override values here.
+#
+# Sections:
+#   database     — PostgreSQL connection & pool settings
+#   vector_store — Qdrant Cloud settings
+#   embedding    — Sentence Transformer model & runtime options
+#   llm          — Google Gemini settings
+#   chunking     — Text chunking parameters
+#   query        — Search settings
+# =============================================================================
+
+
+# ── Database (PostgreSQL) ─────────────────────────────────────────────────────
+database:
+  # Async URL used by FastAPI (asyncpg driver)
+  url: "postgresql+asyncpg://raguser:ragpassword@postgres:5432/ragdb"
+
+  # Sync URL used by the ingestion pipeline (psycopg2 driver)
+  url_sync: "postgresql://raguser:ragpassword@postgres:5432/ragdb"
+
+  # Connection pool settings
+  pool_size: 10          # persistent connections in the pool
+  max_overflow: 20       # extra connections allowed beyond pool_size
+  pool_timeout: 30       # seconds to wait before raising
+
+
+# ── Vector Store (Qdrant Cloud) ──────────────────────────────────────────────
+vector_store:
+  provider: "qdrant"
+
+  # ── Connection ──────────────────────────────────────────────────────────────
+  # Active cluster: Qdrant Cloud (eu-west-2, AWS)
+  # Real credentials are loaded from .env (QDRANT_URL / QDRANT_API_KEY).
+  # The values below are the fallback defaults used when env vars are absent.
+  #
+  # Cluster endpoint:
+  url: "https://c14b47d6-e9a8-448f-a604-a29e40b82f50.eu-west-2-0.aws.cloud.qdrant.io:6333"
+  #
+  # API key: set via QDRANT_API_KEY env var — never hard-code here.
+  # api_key: ""
+  #
+  # gRPC port (optional — enables faster bulk upserts over gRPC instead of REST)
+  # Qdrant Cloud gRPC port is 6334. Uncomment to enable:
+  # grpc_port: 6334
+
+  # ── Collection ──────────────────────────────────────────────────────────────
+  # Collection is auto-created on first upload if it does not exist.
+  collection_name: "rag_knowledge_base"
+
+  # Distance metric — must match the embedding model's output space.
+  # all-MiniLM-L6-v2 produces L2-normalised vectors → cosine == dot, both work.
+  # Options: cosine | dot | euclid
+  distance_metric: "cosine"
+
+  # Keep vectors in RAM for fastest search (recommended for cloud clusters).
+  # Set true only if your collection exceeds available RAM.
+  on_disk_vectors: false
+
+  # ── Local Docker fallback (for offline / CI use) ─────────────────────────
+  # To switch back to a local Qdrant container, set in .env:
+  #   QDRANT_URL=http://localhost:6333
+  #   QDRANT_API_KEY=          ← leave empty
+
+
+# ── Embedding — Sentence Transformers ────────────────────────────────────────
+embedding:
+  # Provider to use for generating vector embeddings.
+  #   sentence_transformer  — local, free, no API key (DEFAULT ✓)
+  #   huggingface           — alias for sentence_transformer
+  #   openai                — requires OPENAI_API_KEY
+  provider: "sentence_transformer"
+
+  # ── Model selection ──────────────────────────────────────────────────────────
+  # Pick the model that best fits your speed / quality / language needs.
+  # The dimension field MUST match the chosen model.
+  #
+  #  Model                                    Dims  Speed   Quality  Notes
+  #  ─────────────────────────────────────────────────────────────────────────
+  #  all-MiniLM-L6-v2                          384  ████    ███      best default
+  #  all-MiniLM-L12-v2                         384  ███     ████     slightly better
+  #  all-mpnet-base-v2                         768  ██      █████    highest quality
+  #  multi-qa-MiniLM-L6-cos-v1               384  ████    ████     tuned for Q&A ✓
+  #  multi-qa-mpnet-base-dot-v1              768  ██      █████    Q&A + high quality
+  #  paraphrase-multilingual-MiniLM-L12-v2   384  ███     ████     50+ languages
+  #  paraphrase-multilingual-mpnet-base-v2   768  ██      █████    multilingual HQ
+  #
+  model: "all-MiniLM-L6-v2"
+
+  # Vector dimension — MUST match the model above
+  dimension: 384
+
+  # ── Runtime settings ─────────────────────────────────────────────────────────
+  # Number of texts encoded per forward pass (tune for your RAM/VRAM)
+  batch_size: 64
+
+  # Compute device: "cpu" | "cuda" | "mps" (Apple Silicon)
+  # Leave as "cpu" unless you have a GPU available
+  device: "cpu"
+
+  # L2-normalise output vectors (required for cosine similarity with Qdrant)
+  normalize_embeddings: true
+
+
+# ── LLM — Google Gemini ───────────────────────────────────────────────────────
+llm:
+  # Provider: gemini | openai
+  provider: "gemini"
+
+  # Gemini model to use for RAG answer synthesis
+  #   gemini-1.5-flash   — fast, cost-effective (recommended)
+  #   gemini-1.5-pro     — higher quality, slower
+  #   gemini-1.0-pro     — legacy stable model
+  model: "gemini-2.0-flash"
+
+  # Maximum tokens in the generated answer
+  max_tokens: 1024
+
+  # Sampling temperature (0.0 = deterministic, 1.0 = creative)
+  temperature: 0.1
+
+  # Number of top retrieved chunks to include in the LLM context window
+  context_chunks: 5
+
+  # System instruction sent to Gemini before the user prompt
+  system_instruction: >
+    You are a helpful assistant that answers questions based strictly on
+    the provided context. If the answer is not found in the context,
+    say so clearly. Always cite the source numbers when referencing
+    information from the context.
+
+
+# ── Text Chunking ─────────────────────────────────────────────────────────────
+chunking:
+  # Target chunk size in tokens (≈ 4 chars per token)
+  size: 512
+
+  # Overlap between consecutive chunks in tokens (preserves context at boundaries)
+  overlap: 50
+
+  # Chunks smaller than this are discarded
+  min_size: 100
+
+
+# ── Query & Search ────────────────────────────────────────────────────────────
+query:
+  # Default number of results returned per query
+  default_top_k: 5
+
+  # Hard maximum for top_k (enforced by API validation)
+  max_top_k: 20
+
+  # Redis TTL for cached query results — kept for future use
+  # Set to 0 to disable
+  cache_ttl_seconds: 3600
+
+  # Minimum cosine similarity score to include a result (0.0 = no filter)
+  min_score_threshold: 0.0

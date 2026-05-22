@@ -508,6 +508,3 @@ audit_log (
 - [ ] Add HTTPS with TLS termination at the load balancer
 - [ ] Tune `CHUNK_SIZE` and `CHUNK_OVERLAP` for your document domain
 - [ ] Switch `EMBEDDING_MODEL` to `all-mpnet-base-v2` for higher quality (768 dims — update Qdrant collection dimension too)
-
-Read me File
-
